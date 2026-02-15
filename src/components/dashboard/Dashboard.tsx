@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Zap } from "lucide-react";
 import { ProfileSummary } from "./ProfileSummary";
 import { ModuleCard } from "./ModuleCard";
 import { WelcomeMessage } from "./WelcomeMessage";
@@ -128,6 +128,26 @@ export function Dashboard() {
                 );
               }
             )}
+
+            {/* VUCA Simulator CTA */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="mt-2 p-5 rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer"
+              onClick={() => navigate("/simulator")}
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Zap size={24} className="text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-gray-900">VUCA Scenario Simulator</h3>
+                  <p className="text-sm text-gray-500 mt-0.5">Face real AI dilemmas and discover your decision-making profile</p>
+                </div>
+                <span className="text-xs font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">NEW</span>
+              </div>
+            </motion.div>
           </div>
         </div>
       </main>
