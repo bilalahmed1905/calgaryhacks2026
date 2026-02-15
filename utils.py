@@ -1,30 +1,27 @@
 import os
 from PIL import Image
-from config import SKILLS_ASSESSMENT_PROMPTS, VUCA_PROMPTS
+from config import MODULE_1_PROMPTS, MODULE_2_PROMPTS, MODULE_3_PROMPTS
 
 
-def build_skills_prompt(field, template_index=0):
-    """Build an image generation prompt for the Skills Assessment module.
-
-    Args:
-        field: Career field (e.g. "software engineering", "healthcare").
-        template_index: Which prompt template to use.
-    """
-    templates = SKILLS_ASSESSMENT_PROMPTS
+def build_module1_prompt(field, template_index=0):
+    """Build an image prompt for Module 1: Skills Discovery."""
+    templates = MODULE_1_PROMPTS
     idx = template_index % len(templates)
     return templates[idx].format(field=field)
 
 
-def build_vuca_prompt(concept, template_index=0):
-    """Build an image generation prompt for the VUCA module.
-
-    Args:
-        concept: One of "volatility", "uncertainty", "complexity", "ambiguity".
-        template_index: Which prompt template to use.
-    """
-    templates = VUCA_PROMPTS
+def build_module2_prompt(field, concept, template_index=0):
+    """Build an image prompt for Module 2: VUCA & Uncertainty."""
+    templates = MODULE_2_PROMPTS
     idx = template_index % len(templates)
-    return templates[idx].format(concept=concept)
+    return templates[idx].format(field=field, concept=concept)
+
+
+def build_module3_prompt(field, template_index=0):
+    """Build an image prompt for Module 3: Practical AI Skills."""
+    templates = MODULE_3_PROMPTS
+    idx = template_index % len(templates)
+    return templates[idx].format(field=field)
 
 
 def load_images_from_folder(folder_path, size=(512, 512)):
