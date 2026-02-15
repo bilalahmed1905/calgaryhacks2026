@@ -2,7 +2,7 @@ import os
 import uuid
 import torch
 from PIL import Image
-from config import IMAGE_MODEL_ID, LORA_WEIGHTS_PATH, HF_TOKEN, IMAGE_OUTPUT_DIR
+from config import IMAGE_MODEL_ID, LORA_WEIGHTS_PATH, LORA_HF_REPO, HF_TOKEN, IMAGE_OUTPUT_DIR
 
 # Global pipeline — loaded once, reused across calls
 _pipe = None
@@ -38,13 +38,17 @@ def _load_pipeline():
         token=HF_TOKEN or None,
     ).to(device)
 
-    # Load fine-tuned LoRA weights if available
-    if os.path.isdir(LORA_WEIGHTS_PATH):
+    # Load fine-tuned LoRA weights (HuggingFace Hub or local)
+    if LORA_HF_REPO:
+        print(f"Loading LoRA weights from HuggingFace: {LORA_HF_REPO}...")
+        pipe.unet = PeftModel.from_pretrained(pipe.unet, LORA_HF_REPO, token=HF_TOKEN or None)
+        print("LoRA weights loaded from Hub.")
+    elif os.path.isdir(LORA_WEIGHTS_PATH):
         print(f"Loading LoRA weights from {LORA_WEIGHTS_PATH}...")
         pipe.unet = PeftModel.from_pretrained(pipe.unet, LORA_WEIGHTS_PATH)
-        print("LoRA weights loaded.")
+        print("LoRA weights loaded locally.")
     else:
-        print(f"No LoRA weights found at {LORA_WEIGHTS_PATH}, using base model.")
+        print("No LoRA weights found. Using base SDXL model.")
 
     _pipe = pipe
     print(f"Pipeline ready on {device}.")
