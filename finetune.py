@@ -156,13 +156,14 @@ def finetune_lora(
     pooled_output = pooled_output.to(device)
 
     # ------------------------------------------------------------------
-    # 5. Training loop (all float32)
+    # 5. Training loop
+    #    autocast handles float16 base + float32 LoRA mixed dtypes
+    #    Loss computed in float32 outside autocast for stability
     # ------------------------------------------------------------------
     print(f"Training on {len(all_latents)} images for {num_epochs} epochs...")
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         for latent in all_latents:
-            # Everything in float32 for the training loop
             latent_gpu = latent.to(device, dtype=torch.float32)
 
             noise = torch.randn_like(latent_gpu)
@@ -176,12 +177,15 @@ def finetune_lora(
                 "text_embeds": pooled_output,
                 "time_ids": add_time_ids,
             }
-            pred = unet(
-                noisy_latents, timesteps,
-                encoder_hidden_states=encoder_hidden_states,
-                added_cond_kwargs=added_cond_kwargs,
-            ).sample
 
+            with torch.autocast("cuda", dtype=torch.float16):
+                pred = unet(
+                    noisy_latents, timesteps,
+                    encoder_hidden_states=encoder_hidden_states,
+                    added_cond_kwargs=added_cond_kwargs,
+                ).sample
+
+            # Loss in float32 (outside autocast)
             loss = torch.nn.functional.mse_loss(pred.float(), noise.float())
 
             optimizer.zero_grad()
