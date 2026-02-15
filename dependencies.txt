@@ -1,0 +1,56 @@
+============================================
+ DEPENDENCIES TO INSTALL
+============================================
+
+Run this single command to install everything:
+
+  npm install
+
+Or if starting fresh, run these commands:
+
+---------------------------------------------
+ PRODUCTION DEPENDENCIES
+---------------------------------------------
+npm install react react-dom react-router-dom framer-motion lucide-react react-markdown
+
+- react              — UI framework
+- react-dom          — React DOM renderer
+- react-router-dom   — Client-side routing
+- framer-motion      — Animations & transitions
+- lucide-react       — Icon library
+- react-markdown     — Render AI-generated markdown content
+
+---------------------------------------------
+ DEV DEPENDENCIES
+---------------------------------------------
+npm install -D tailwindcss @tailwindcss/vite @vitejs/plugin-react typescript vite eslint @eslint/js eslint-plugin-react-hooks eslint-plugin-react-refresh globals typescript-eslint @types/react @types/react-dom @types/node
+
+- tailwindcss          — Utility-first CSS framework
+- @tailwindcss/vite    — Tailwind CSS Vite plugin
+- @vitejs/plugin-react — Vite React plugin (HMR, JSX)
+- typescript           — TypeScript compiler
+- vite                 — Build tool / dev server
+- eslint               — Linter
+- @eslint/js           — ESLint JS config
+- eslint-plugin-react-hooks    — React hooks lint rules
+- eslint-plugin-react-refresh  — React refresh lint rules
+- globals              — Global variable definitions for ESLint
+- typescript-eslint    — TypeScript ESLint integration
+- @types/react         — React type definitions
+- @types/react-dom     — React DOM type definitions
+- @types/node          — Node.js type definitions
+
+---------------------------------------------
+ GOOGLE FONTS (loaded via index.html)
+---------------------------------------------
+- Inter (body text)
+- Space Grotesk (headings)
+  Already included in index.html <link> tags — no install needed.
+
+---------------------------------------------
+ QUICK START
+---------------------------------------------
+1. cd calgaryhacks2026
+2. npm install
+3. npm run dev
+4. Open http://localhost:5173
