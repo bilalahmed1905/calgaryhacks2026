@@ -10,6 +10,7 @@ Usage (on Colab or GPU machine):
     python finetune.py ./training_images "educational career illustration"
 """
 
+import gc
 import os
 import sys
 
@@ -26,7 +27,6 @@ def finetune_lora(
     import torch
     from diffusers import StableDiffusionXLPipeline, DDPMScheduler
     from peft import LoraConfig, get_peft_model
-    from torch.utils.data import Dataset, DataLoader
     from torchvision import transforms
     from PIL import Image
 
@@ -37,35 +37,18 @@ def finetune_lora(
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    class ImagePromptDataset(Dataset):
-        def __init__(self, folder, prompt, size=512):
-            valid_ext = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-            self.images = []
-            for f in sorted(os.listdir(folder)):
-                if os.path.splitext(f)[1].lower() in valid_ext:
-                    img = Image.open(os.path.join(folder, f)).convert("RGB").resize((size, size))
-                    self.images.append(img)
-            self.prompt = prompt
-            self.transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),
-            ])
-
-        def __len__(self):
-            return len(self.images)
-
-        def __getitem__(self, idx):
-            return {"pixel_values": self.transform(self.images[idx]), "prompt": self.prompt}
-
+    # ------------------------------------------------------------------
+    # 1. Load pipeline in float16 to save memory
+    # ------------------------------------------------------------------
     print(f"Using device: {device}")
-
-    # Load entire pipeline in float32 to avoid nan
-    print("Loading pipeline in float32...")
+    print("Loading pipeline in float16...")
     pipe = StableDiffusionXLPipeline.from_pretrained(
-        IMAGE_MODEL_ID, torch_dtype=torch.float32, token=HF_TOKEN or None,
+        IMAGE_MODEL_ID, torch_dtype=torch.float16, token=HF_TOKEN or None,
     )
 
-    # Encode the prompt once on CPU (float32 is fine)
+    # ------------------------------------------------------------------
+    # 2. Encode the prompt on GPU, then delete text encoders entirely
+    # ------------------------------------------------------------------
     print("Encoding prompt...")
     tokenizer_output = pipe.tokenizer(
         prompt, padding="max_length", max_length=pipe.tokenizer.model_max_length,
@@ -76,34 +59,64 @@ def finetune_lora(
         truncation=True, return_tensors="pt",
     )
 
-    # Move text encoders to GPU briefly to encode, then free them
     pipe.text_encoder.to(device)
     pipe.text_encoder_2.to(device)
 
     with torch.no_grad():
-        text_encoder_output = pipe.text_encoder(
+        te1_out = pipe.text_encoder(
             tokenizer_output.input_ids.to(device), output_hidden_states=True,
         )
-        text_encoder_2_output = pipe.text_encoder_2(
+        te2_out = pipe.text_encoder_2(
             tokenizer_2_output.input_ids.to(device), output_hidden_states=True,
         )
+        # Keep embeddings in float32 for stable training
         encoder_hidden_states = torch.cat([
-            text_encoder_output.hidden_states[-2],
-            text_encoder_2_output.hidden_states[-2],
-        ], dim=-1).detach()
-        pooled_output = text_encoder_2_output[0].detach()
+            te1_out.hidden_states[-2],
+            te2_out.hidden_states[-2],
+        ], dim=-1).float().detach()
+        pooled_output = te2_out[0].float().detach()
 
-    # Free text encoders
-    pipe.text_encoder.to("cpu")
-    pipe.text_encoder_2.to("cpu")
-    del text_encoder_output, text_encoder_2_output
+    # Delete text encoders completely to free GPU memory
+    del te1_out, te2_out, tokenizer_output, tokenizer_2_output
+    del pipe.text_encoder, pipe.text_encoder_2
+    gc.collect()
     torch.cuda.empty_cache()
+    print("Text encoders freed.")
 
-    # Move VAE to GPU for encoding images, keep in float16 to save memory
-    pipe.vae.to(device, dtype=torch.float16)
+    # ------------------------------------------------------------------
+    # 3. Pre-encode ALL images through VAE, then delete VAE entirely
+    # ------------------------------------------------------------------
+    print("Pre-encoding images through VAE...")
+    valid_ext = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize([0.5], [0.5]),
+    ])
+
+    all_latents = []
+    pipe.vae.to(device)
     pipe.vae.requires_grad_(False)
 
-    # Set up LoRA on UNet in float32
+    for f in sorted(os.listdir(image_folder)):
+        if os.path.splitext(f)[1].lower() in valid_ext:
+            img = Image.open(os.path.join(image_folder, f)).convert("RGB").resize((512, 512))
+            pixel = transform(img).unsqueeze(0).to(device, dtype=torch.float16)
+            with torch.no_grad():
+                latent = pipe.vae.encode(pixel).latent_dist.sample()
+                latent = (latent * pipe.vae.config.scaling_factor).float().cpu()
+            all_latents.append(latent)
+
+    print(f"Encoded {len(all_latents)} images to latents.")
+
+    # Delete VAE completely
+    del pipe.vae
+    gc.collect()
+    torch.cuda.empty_cache()
+    print("VAE freed.")
+
+    # ------------------------------------------------------------------
+    # 4. Set up LoRA on UNet (float16 weights, gradient checkpointing)
+    # ------------------------------------------------------------------
     lora_config = LoraConfig(
         r=lora_rank,
         lora_alpha=lora_rank * 2,
@@ -112,63 +125,59 @@ def finetune_lora(
     )
 
     unet = get_peft_model(pipe.unet, lora_config)
-    unet.to(device, dtype=torch.float32)
+    unet.to(device)
+    unet.enable_gradient_checkpointing()
     unet.train()
 
     trainable = sum(p.numel() for p in unet.parameters() if p.requires_grad)
     total = sum(p.numel() for p in unet.parameters())
     print(f"Trainable: {trainable:,} / {total:,} ({100 * trainable / total:.2f}%)")
 
-    dataset = ImagePromptDataset(image_folder, prompt)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, unet.parameters()), lr=learning_rate,
     )
     noise_scheduler = DDPMScheduler.from_pretrained(IMAGE_MODEL_ID, subfolder="scheduler")
 
-    add_time_ids = torch.tensor([[512, 512, 0, 0, 512, 512]], dtype=torch.float32, device=device)
+    add_time_ids = torch.tensor([[512, 512, 0, 0, 512, 512]], dtype=torch.float16, device=device)
 
-    print(f"Training on {len(dataset)} images for {num_epochs} epochs...")
+    # ------------------------------------------------------------------
+    # 5. Training loop
+    # ------------------------------------------------------------------
+    print(f"Training on {len(all_latents)} images for {num_epochs} epochs...")
     for epoch in range(num_epochs):
         epoch_loss = 0.0
-        for batch in dataloader:
-            bs = batch["pixel_values"].shape[0]
+        for latent in all_latents:
+            latent_gpu = latent.to(device, dtype=torch.float16)
 
-            # Encode images to latent space (VAE in float16, then cast back)
-            with torch.no_grad():
-                pixel_values = batch["pixel_values"].to(device, dtype=torch.float16)
-                latents = pipe.vae.encode(pixel_values).latent_dist.sample()
-                latents = (latents * pipe.vae.config.scaling_factor).float()
-
-            # Add noise in float32
-            noise = torch.randn_like(latents)
+            # Add noise in float16
+            noise = torch.randn_like(latent_gpu)
             timesteps = torch.randint(
                 0, noise_scheduler.config.num_train_timesteps,
-                (bs,), device=device,
+                (1,), device=device,
             ).long()
-            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+            noisy_latents = noise_scheduler.add_noise(latent_gpu, noise, timesteps)
 
-            # Forward pass (all float32)
-            enc_hidden = encoder_hidden_states.expand(bs, -1, -1)
-            pooled = pooled_output.expand(bs, -1)
-            time_ids = add_time_ids.expand(bs, -1)
-
-            added_cond_kwargs = {"text_embeds": pooled, "time_ids": time_ids}
+            # Forward pass in float16
+            added_cond_kwargs = {
+                "text_embeds": pooled_output.half().to(device),
+                "time_ids": add_time_ids,
+            }
             pred = unet(
                 noisy_latents, timesteps,
-                encoder_hidden_states=enc_hidden,
+                encoder_hidden_states=encoder_hidden_states.half().to(device),
                 added_cond_kwargs=added_cond_kwargs,
             ).sample
 
-            loss = torch.nn.functional.mse_loss(pred, noise)
+            # Compute loss in float32 to avoid NaN
+            loss = torch.nn.functional.mse_loss(pred.float(), noise.float())
+
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(unet.parameters(), 1.0)
             optimizer.step()
             epoch_loss += loss.item()
 
-        avg_loss = epoch_loss / len(dataloader)
+        avg_loss = epoch_loss / len(all_latents)
         print(f"Epoch {epoch + 1}/{num_epochs} - Loss: {avg_loss:.4f}")
 
     save_path = os.path.join(LORA_OUTPUT_DIR, output_name)
