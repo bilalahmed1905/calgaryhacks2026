@@ -39,7 +39,7 @@ def finetune_lora(
     dtype = torch.float16 if device == "cuda" else torch.float32
 
     class ImagePromptDataset(Dataset):
-        def __init__(self, folder, prompt, size=512):
+        def __init__(self, folder, prompt, size=1024):
             valid_ext = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
             self.images = []
             for f in sorted(os.listdir(folder)):
@@ -64,6 +64,43 @@ def finetune_lora(
         IMAGE_MODEL_ID, torch_dtype=dtype, token=HF_TOKEN or None,
     )
 
+    # Move VAE and text encoders to device for encoding
+    pipe.vae.to(device)
+    pipe.text_encoder.to(device)
+    pipe.text_encoder_2.to(device)
+
+    # Encode the prompt once (same for all images)
+    print("Encoding prompt...")
+    tokenizer_output = pipe.tokenizer(
+        prompt, padding="max_length", max_length=pipe.tokenizer.model_max_length,
+        truncation=True, return_tensors="pt",
+    )
+    tokenizer_2_output = pipe.tokenizer_2(
+        prompt, padding="max_length", max_length=pipe.tokenizer_2.model_max_length,
+        truncation=True, return_tensors="pt",
+    )
+
+    with torch.no_grad():
+        text_encoder_output = pipe.text_encoder(
+            tokenizer_output.input_ids.to(device), output_hidden_states=True,
+        )
+        text_encoder_2_output = pipe.text_encoder_2(
+            tokenizer_2_output.input_ids.to(device), output_hidden_states=True,
+        )
+        # SDXL uses penultimate hidden states
+        encoder_hidden_states = torch.cat([
+            text_encoder_output.hidden_states[-2],
+            text_encoder_2_output.hidden_states[-2],
+        ], dim=-1)
+        # Pooled output from text_encoder_2
+        pooled_output = text_encoder_2_output[0]
+
+    # Free text encoders from GPU memory
+    pipe.text_encoder.to("cpu")
+    pipe.text_encoder_2.to("cpu")
+    torch.cuda.empty_cache()
+
+    # Set up LoRA on UNet
     lora_config = LoraConfig(
         r=lora_rank,
         lora_alpha=lora_rank * 2,
@@ -74,6 +111,9 @@ def finetune_lora(
     unet = get_peft_model(pipe.unet, lora_config)
     unet.to(device)
     unet.train()
+
+    # Freeze VAE
+    pipe.vae.requires_grad_(False)
 
     trainable = sum(p.numel() for p in unet.parameters() if p.requires_grad)
     total = sum(p.numel() for p in unet.parameters())
@@ -87,19 +127,43 @@ def finetune_lora(
     )
     noise_scheduler = DDPMScheduler.from_pretrained(IMAGE_MODEL_ID, subfolder="scheduler")
 
+    # SDXL added conditioning: original_size, crop, target_size
+    add_time_ids = torch.tensor([[1024, 1024, 0, 0, 1024, 1024]], dtype=dtype, device=device)
+
     print(f"Training on {len(dataset)} images for {num_epochs} epochs...")
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         for batch in dataloader:
-            pixel_values = batch["pixel_values"].to(device)
-            noise = torch.randn_like(pixel_values)
+            pixel_values = batch["pixel_values"].to(device, dtype=dtype)
+            bs = pixel_values.shape[0]
+
+            # Encode images to latent space
+            with torch.no_grad():
+                latents = pipe.vae.encode(pixel_values).latent_dist.sample()
+                latents = latents * pipe.vae.config.scaling_factor
+
+            # Add noise
+            noise = torch.randn_like(latents)
             timesteps = torch.randint(
                 0, noise_scheduler.config.num_train_timesteps,
-                (pixel_values.shape[0],), device=device,
+                (bs,), device=device,
             ).long()
-            noisy = noise_scheduler.add_noise(pixel_values, noise, timesteps)
-            pred = unet(noisy, timesteps).sample
-            loss = torch.nn.functional.mse_loss(pred, noise)
+            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+
+            # Expand encoder states for batch
+            enc_hidden = encoder_hidden_states.expand(bs, -1, -1)
+            pooled = pooled_output.expand(bs, -1)
+            time_ids = add_time_ids.expand(bs, -1)
+
+            # Predict noise
+            added_cond_kwargs = {"text_embeds": pooled, "time_ids": time_ids}
+            pred = unet(
+                noisy_latents, timesteps,
+                encoder_hidden_states=enc_hidden,
+                added_cond_kwargs=added_cond_kwargs,
+            ).sample
+
+            loss = torch.nn.functional.mse_loss(pred.float(), noise.float())
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
