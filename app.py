@@ -1,19 +1,12 @@
 import gradio as gr
 from image_gen import generate_image
 from video_gen import generate_video
-from finetune import finetune_lora
 from utils import build_skills_prompt, build_vuca_prompt
 
 
-def on_generate_image(prompt, steps, guidance, width, height):
+def on_generate_image(prompt):
     """Handle image generation from the Gradio UI."""
-    image, path = generate_image(
-        prompt=prompt,
-        num_inference_steps=int(steps),
-        guidance_scale=float(guidance),
-        width=int(width),
-        height=int(height),
-    )
+    image, path = generate_image(prompt=prompt)
     return image, f"Saved to: {path}"
 
 
@@ -33,20 +26,8 @@ def on_generate_vuca_image(concept, template_idx):
 
 def on_generate_video(prompt):
     """Handle video generation from the Gradio UI."""
-    path = generate_video(prompt, use_api=True)
+    path = generate_video(prompt)
     return path, f"Saved to: {path}"
-
-
-def on_finetune(image_folder, prompt, epochs, lr, rank):
-    """Handle LoRA fine-tuning from the Gradio UI."""
-    save_path = finetune_lora(
-        image_folder=image_folder,
-        prompt=prompt,
-        num_epochs=int(epochs),
-        learning_rate=float(lr),
-        lora_rank=int(rank),
-    )
-    return f"Training complete! LoRA weights saved to: {save_path}"
 
 
 def build_app():
@@ -97,10 +78,6 @@ def build_app():
             with gr.Row():
                 with gr.Column():
                     custom_prompt = gr.Textbox(label="Prompt", placeholder="Describe the image you want to generate...")
-                    custom_steps = gr.Slider(10, 50, value=30, step=5, label="Inference Steps")
-                    custom_guidance = gr.Slider(1.0, 15.0, value=7.5, step=0.5, label="Guidance Scale")
-                    custom_width = gr.Slider(256, 768, value=512, step=64, label="Width")
-                    custom_height = gr.Slider(256, 768, value=512, step=64, label="Height")
                     custom_btn = gr.Button("Generate", variant="primary")
                 with gr.Column():
                     custom_image = gr.Image(label="Generated Image")
@@ -108,7 +85,7 @@ def build_app():
 
             custom_btn.click(
                 on_generate_image,
-                inputs=[custom_prompt, custom_steps, custom_guidance, custom_width, custom_height],
+                inputs=[custom_prompt],
                 outputs=[custom_image, custom_status],
             )
 
@@ -116,7 +93,7 @@ def build_app():
             with gr.Row():
                 with gr.Column():
                     video_prompt = gr.Textbox(label="Prompt", placeholder="Describe the video you want to generate...")
-                    video_btn = gr.Button("Generate Video (API)", variant="primary")
+                    video_btn = gr.Button("Generate Video", variant="primary")
                 with gr.Column():
                     video_output = gr.Video(label="Generated Video")
                     video_status = gr.Textbox(label="Status", interactive=False)
@@ -125,25 +102,6 @@ def build_app():
                 on_generate_video,
                 inputs=[video_prompt],
                 outputs=[video_output, video_status],
-            )
-
-        with gr.Tab("Fine-Tune (LoRA)"):
-            gr.Markdown("Fine-tune the image model on your own dataset using LoRA.")
-            with gr.Row():
-                with gr.Column():
-                    ft_folder = gr.Textbox(label="Image Folder Path", placeholder="/path/to/training/images")
-                    ft_prompt = gr.Textbox(label="Training Prompt", placeholder="educational career illustration, professional")
-                    ft_epochs = gr.Slider(1, 20, value=5, step=1, label="Epochs")
-                    ft_lr = gr.Number(value=1e-4, label="Learning Rate")
-                    ft_rank = gr.Slider(2, 16, value=4, step=2, label="LoRA Rank")
-                    ft_btn = gr.Button("Start Fine-Tuning", variant="primary")
-                with gr.Column():
-                    ft_status = gr.Textbox(label="Status", interactive=False, lines=5)
-
-            ft_btn.click(
-                on_finetune,
-                inputs=[ft_folder, ft_prompt, ft_epochs, ft_lr, ft_rank],
-                outputs=[ft_status],
             )
 
     return app

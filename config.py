@@ -1,38 +1,16 @@
 import os
-import torch
 
 
 # --- Hugging Face API ---
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
-# --- Model IDs ---
+# --- Model IDs (used via HF Inference API, not loaded locally) ---
 IMAGE_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
 VIDEO_MODEL_ID = "ali-vilab/text-to-video-ms-1.7b"
 
-# --- Device Detection (MPS for Apple Silicon, else CPU) ---
-if torch.backends.mps.is_available():
-    DEVICE = torch.device("mps")
-elif torch.cuda.is_available():
-    DEVICE = torch.device("cuda")
-else:
-    DEVICE = torch.device("cpu")
-
-TORCH_DTYPE = torch.float32 if DEVICE.type == "mps" else torch.float16
-
-# --- Generation Defaults ---
-IMAGE_DEFAULTS = {
-    "num_inference_steps": 30,
-    "guidance_scale": 7.5,
-    "width": 1024,
-    "height": 1024,
-}
-
-VIDEO_DEFAULTS = {
-    "num_inference_steps": 25,
-    "num_frames": 16,
-    "width": 256,
-    "height": 256,
-}
+# --- HF Inference API URLs ---
+IMAGE_API_URL = f"https://api-inference.huggingface.co/models/{IMAGE_MODEL_ID}"
+VIDEO_API_URL = f"https://api-inference.huggingface.co/models/{VIDEO_MODEL_ID}"
 
 # --- Output Directories ---
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "outputs")

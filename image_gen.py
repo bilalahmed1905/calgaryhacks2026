@@ -1,66 +1,32 @@
 import os
 import uuid
-from diffusers import StableDiffusionXLPipeline
-from config import (
-    IMAGE_MODEL_ID, DEVICE, TORCH_DTYPE, HF_TOKEN,
-    IMAGE_DEFAULTS, IMAGE_OUTPUT_DIR,
-)
+import requests
+from io import BytesIO
+from PIL import Image
+from config import IMAGE_API_URL, HF_TOKEN, IMAGE_OUTPUT_DIR
 
 
-_pipeline = None
-
-
-def get_pipeline():
-    """Load the Stable Diffusion pipeline (cached after first call)."""
-    global _pipeline
-    if _pipeline is None:
-        _pipeline = StableDiffusionXLPipeline.from_pretrained(
-            IMAGE_MODEL_ID,
-            torch_dtype=TORCH_DTYPE,
-            token=HF_TOKEN or None,
-        )
-        _pipeline.to(DEVICE)
-        if DEVICE.type == "mps":
-            _pipeline.enable_attention_slicing()
-    return _pipeline
-
-
-def load_lora_weights(lora_path):
-    """Load LoRA weights into the pipeline."""
-    pipe = get_pipeline()
-    pipe.load_lora_weights(lora_path)
-    return pipe
-
-
-def generate_image(
-    prompt,
-    negative_prompt="blurry, low quality, distorted, ugly",
-    num_inference_steps=None,
-    guidance_scale=None,
-    width=None,
-    height=None,
-    save=True,
-):
-    """Generate an image from a text prompt.
+def generate_image(prompt, negative_prompt="blurry, low quality, distorted", save=True):
+    """Generate an image using the HF Inference API.
 
     Returns the PIL image and the saved file path (if save=True).
     """
-    pipe = get_pipeline()
+    if not HF_TOKEN:
+        raise ValueError(
+            "HF_TOKEN environment variable is required. "
+            "Set it with: export HF_TOKEN=your_token_here"
+        )
 
-    steps = num_inference_steps or IMAGE_DEFAULTS["num_inference_steps"]
-    scale = guidance_scale or IMAGE_DEFAULTS["guidance_scale"]
-    w = width or IMAGE_DEFAULTS["width"]
-    h = height or IMAGE_DEFAULTS["height"]
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    payload = {
+        "inputs": prompt,
+        "parameters": {"negative_prompt": negative_prompt},
+    }
 
-    result = pipe(
-        prompt=prompt,
-        negative_prompt=negative_prompt,
-        num_inference_steps=steps,
-        guidance_scale=scale,
-        width=w,
-        height=h,
-    )
-    image = result.images[0]
+    response = requests.post(IMAGE_API_URL, headers=headers, json=payload)
+    response.raise_for_status()
+
+    image = Image.open(BytesIO(response.content))
 
     file_path = None
     if save:
@@ -72,7 +38,9 @@ def generate_image(
 
 
 if __name__ == "__main__":
-    print(f"Using device: {DEVICE}")
     prompt = "professional illustration of a university student planning their career path, modern flat design, educational"
-    img, path = generate_image(prompt)
-    print(f"Image saved to: {path}")
+    try:
+        img, path = generate_image(prompt)
+        print(f"Image saved to: {path}")
+    except ValueError as e:
+        print(f"Error: {e}")
