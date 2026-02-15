@@ -6,7 +6,7 @@ import torch
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
 # --- Model IDs ---
-IMAGE_MODEL_ID = "stabilityai/stable-diffusion-2-1"
+IMAGE_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
 VIDEO_MODEL_ID = "ali-vilab/text-to-video-ms-1.7b"
 
 # --- Device Detection (MPS for Apple Silicon, else CPU) ---
@@ -23,8 +23,8 @@ TORCH_DTYPE = torch.float32 if DEVICE.type == "mps" else torch.float16
 IMAGE_DEFAULTS = {
     "num_inference_steps": 30,
     "guidance_scale": 7.5,
-    "width": 512,
-    "height": 512,
+    "width": 1024,
+    "height": 1024,
 }
 
 VIDEO_DEFAULTS = {

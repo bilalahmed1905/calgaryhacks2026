@@ -1,6 +1,6 @@
 import os
 import torch
-from diffusers import StableDiffusionPipeline, DDPMScheduler
+from diffusers import StableDiffusionXLPipeline, DDPMScheduler
 from peft import LoraConfig, get_peft_model
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
@@ -13,7 +13,7 @@ from utils import load_images_from_folder
 class ImagePromptDataset(Dataset):
     """Simple dataset of (image, prompt) pairs for LoRA fine-tuning."""
 
-    def __init__(self, image_folder, prompt, size=512):
+    def __init__(self, image_folder, prompt, size=1024):
         self.images = load_images_from_folder(image_folder, size=(size, size))
         self.prompt = prompt
         self.transform = transforms.Compose([
@@ -52,11 +52,10 @@ def finetune_lora(
     Returns:
         Path to saved LoRA weights.
     """
-    pipe = StableDiffusionPipeline.from_pretrained(
+    pipe = StableDiffusionXLPipeline.from_pretrained(
         IMAGE_MODEL_ID,
         torch_dtype=TORCH_DTYPE,
         token=HF_TOKEN or None,
-        safety_checker=None,
     )
 
     lora_config = LoraConfig(

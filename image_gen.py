@@ -1,6 +1,6 @@
 import os
 import uuid
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionXLPipeline
 from config import (
     IMAGE_MODEL_ID, DEVICE, TORCH_DTYPE, HF_TOKEN,
     IMAGE_DEFAULTS, IMAGE_OUTPUT_DIR,
@@ -14,11 +14,10 @@ def get_pipeline():
     """Load the Stable Diffusion pipeline (cached after first call)."""
     global _pipeline
     if _pipeline is None:
-        _pipeline = StableDiffusionPipeline.from_pretrained(
+        _pipeline = StableDiffusionXLPipeline.from_pretrained(
             IMAGE_MODEL_ID,
             torch_dtype=TORCH_DTYPE,
             token=HF_TOKEN or None,
-            safety_checker=None,
         )
         _pipeline.to(DEVICE)
         if DEVICE.type == "mps":
