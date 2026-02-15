@@ -119,7 +119,9 @@ def finetune_lora(
     print("VAE freed.")
 
     # ------------------------------------------------------------------
-    # 4. Set up LoRA on UNet (float16 weights, gradient checkpointing)
+    # 4. Set up LoRA on UNet
+    #    Base model stays float16 (frozen, saves memory)
+    #    LoRA params cast to float32 (trainable, stable gradients)
     # ------------------------------------------------------------------
     lora_config = LoraConfig(
         r=lora_rank,
@@ -131,6 +133,11 @@ def finetune_lora(
     unet = get_peft_model(pipe.unet, lora_config)
     unet.to(device)
     unet.enable_gradient_checkpointing()
+
+    # Cast only LoRA (trainable) params to float32 for stable training
+    for name, param in unet.named_parameters():
+        if param.requires_grad:
+            param.data = param.data.float()
     unet.train()
 
     trainable = sum(p.numel() for p in unet.parameters() if p.requires_grad)
@@ -142,18 +149,22 @@ def finetune_lora(
     )
     noise_scheduler = DDPMScheduler.from_pretrained(IMAGE_MODEL_ID, subfolder="scheduler")
 
-    add_time_ids = torch.tensor([[512, 512, 0, 0, 512, 512]], dtype=torch.float16, device=device)
+    add_time_ids = torch.tensor([[512, 512, 0, 0, 512, 512]], dtype=torch.float32, device=device)
+
+    # Move embeddings to GPU once (float32)
+    encoder_hidden_states = encoder_hidden_states.to(device)
+    pooled_output = pooled_output.to(device)
 
     # ------------------------------------------------------------------
-    # 5. Training loop
+    # 5. Training loop (all float32)
     # ------------------------------------------------------------------
     print(f"Training on {len(all_latents)} images for {num_epochs} epochs...")
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         for latent in all_latents:
-            latent_gpu = latent.to(device, dtype=torch.float16)
+            # Everything in float32 for the training loop
+            latent_gpu = latent.to(device, dtype=torch.float32)
 
-            # Add noise in float16
             noise = torch.randn_like(latent_gpu)
             timesteps = torch.randint(
                 0, noise_scheduler.config.num_train_timesteps,
@@ -161,18 +172,16 @@ def finetune_lora(
             ).long()
             noisy_latents = noise_scheduler.add_noise(latent_gpu, noise, timesteps)
 
-            # Forward pass in float16
             added_cond_kwargs = {
-                "text_embeds": pooled_output.half().to(device),
+                "text_embeds": pooled_output,
                 "time_ids": add_time_ids,
             }
             pred = unet(
                 noisy_latents, timesteps,
-                encoder_hidden_states=encoder_hidden_states.half().to(device),
+                encoder_hidden_states=encoder_hidden_states,
                 added_cond_kwargs=added_cond_kwargs,
             ).sample
 
-            # Compute loss in float32 to avoid NaN
             loss = torch.nn.functional.mse_loss(pred.float(), noise.float())
 
             optimizer.zero_grad()
