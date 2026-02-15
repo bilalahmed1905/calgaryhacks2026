@@ -120,7 +120,7 @@ export function QuestionCard({
             return (
               <div key={opt.value}>
                 <motion.button
-                  
+                  type="button"
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
                   onClick={() => onAnswer(fieldKey, opt.value)}
