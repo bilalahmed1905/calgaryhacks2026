@@ -13,7 +13,7 @@ VIDEO_API_URL = f"https://api-inference.huggingface.co/models/{VIDEO_MODEL_ID}"
 
 # --- LoRA weights ---
 # Option 1: HuggingFace Hub repo ID (works on any machine, set this after running Colab step 9)
-LORA_HF_REPO = os.environ.get("LORA_HF_REPO", "")  # e.g. "your-username/claritypath-lora"
+LORA_HF_REPO = os.environ.get("LORA_HF_REPO", "bilalahmed927/Claire")
 
 # Option 2: Local path (from Colab step 8 zip download)
 LORA_WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "outputs", "lora_weights", "claritypath_lora")
