@@ -128,7 +128,7 @@ export function ContentSection({ section, index }: ContentSectionProps) {
                 className="w-full h-auto object-cover"
               />
               <div className="px-4 py-2 bg-gray-50 text-xs text-gray-400 text-center">
-                AI-generated visual — Stable Diffusion
+                AI-generated visual — Claire (Fine-tuned SD 1.5 LoRA)
               </div>
             </motion.div>
           )}

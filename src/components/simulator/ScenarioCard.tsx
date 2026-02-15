@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
-import { AlertTriangle, HelpCircle, Layers, Eye } from "lucide-react";
+import { AlertTriangle, Zap, HelpCircle, Layers, Loader2 } from "lucide-react";
+import { Button } from "../ui/Button";
 
-interface ScenarioChoice {
+interface Choice {
   id: string;
   text: string;
   approach: string;
@@ -10,18 +11,18 @@ interface ScenarioChoice {
 interface ScenarioCardProps {
   scenario: string;
   vucaFactors: string[];
-  choices: ScenarioChoice[];
+  choices: Choice[];
   round: number;
   totalRounds: number;
-  onChoose: (choice: ScenarioChoice) => void;
+  onChoose: (choice: Choice) => void;
   isLoading: boolean;
 }
 
-const vucaIcons: Record<string, { icon: typeof AlertTriangle; color: string; label: string }> = {
-  volatility: { icon: AlertTriangle, color: "bg-red-100 text-red-600", label: "Volatility" },
-  uncertainty: { icon: HelpCircle, color: "bg-amber-100 text-amber-600", label: "Uncertainty" },
-  complexity: { icon: Layers, color: "bg-purple-100 text-purple-600", label: "Complexity" },
-  ambiguity: { icon: Eye, color: "bg-blue-100 text-blue-600", label: "Ambiguity" },
+const vucaIcons: Record<string, { icon: typeof Zap; color: string; label: string }> = {
+  volatility: { icon: Zap, color: "text-red-500 bg-red-50 border-red-200", label: "Volatility" },
+  uncertainty: { icon: HelpCircle, color: "text-amber-500 bg-amber-50 border-amber-200", label: "Uncertainty" },
+  complexity: { icon: Layers, color: "text-purple-500 bg-purple-50 border-purple-200", label: "Complexity" },
+  ambiguity: { icon: AlertTriangle, color: "text-blue-500 bg-blue-50 border-blue-200", label: "Ambiguity" },
 };
 
 export function ScenarioCard({
@@ -35,94 +36,79 @@ export function ScenarioCard({
 }: ScenarioCardProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 30 }}
+      initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
       className="space-y-6"
     >
       {/* Round indicator */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {[1, 2, 3].map((r) => (
-            <div
-              key={r}
-              className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
-                r === round
-                  ? "bg-primary text-white scale-110 shadow-lg shadow-primary/30"
-                  : r < round
-                  ? "bg-green-500 text-white"
-                  : "bg-gray-100 text-gray-400"
-              }`}
-            >
-              {r < round ? "✓" : r}
-            </div>
-          ))}
+      <div className="flex items-center gap-2">
+        {Array.from({ length: totalRounds }).map((_, i) => (
+          <div
+            key={i}
+            className={`h-2 flex-1 rounded-full transition-colors ${
+              i < round ? "bg-primary" : "bg-gray-200"
+            }`}
+          />
+        ))}
+      </div>
+      <p className="text-sm text-muted font-medium">
+        Round {round} of {totalRounds}
+      </p>
+
+      {/* Scenario */}
+      <div className="bg-surface rounded-2xl border border-border p-6 space-y-4">
+        {/* VUCA badges */}
+        <div className="flex flex-wrap gap-2">
+          {vucaFactors.map((f) => {
+            const cfg = vucaIcons[f.toLowerCase()];
+            if (!cfg) return null;
+            const Icon = cfg.icon;
+            return (
+              <span
+                key={f}
+                className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${cfg.color}`}
+              >
+                <Icon size={12} />
+                {cfg.label}
+              </span>
+            );
+          })}
         </div>
-        <span className="text-sm text-gray-500 font-medium">
-          Round {round} of {totalRounds}
-        </span>
-      </div>
 
-      {/* VUCA factors */}
-      <div className="flex flex-wrap gap-2">
-        {vucaFactors.map((factor) => {
-          const config = vucaIcons[factor.toLowerCase()] || vucaIcons.uncertainty;
-          const Icon = config.icon;
-          return (
-            <span
-              key={factor}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${config.color}`}
-            >
-              <Icon size={14} />
-              {config.label}
-            </span>
-          );
-        })}
+        <p className="text-text leading-relaxed text-[15px]">{scenario}</p>
       </div>
-
-      {/* Scenario text */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-        className="bg-white rounded-2xl border-2 border-gray-200 p-6 shadow-sm"
-      >
-        <p className="text-gray-800 text-[16px] leading-[1.8]">{scenario}</p>
-      </motion.div>
 
       {/* Choices */}
       <div className="space-y-3">
-        <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-          What do you do?
-        </p>
-        {choices.map((choice, i) => (
+        <p className="text-sm font-semibold text-text">What do you do?</p>
+        {choices.map((c) => (
           <motion.button
-            key={choice.id}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.4 + i * 0.1 }}
-            whileHover={{ scale: 1.01, x: 4 }}
+            key={c.id}
+            whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
             disabled={isLoading}
-            onClick={() => onChoose(choice)}
-            className="w-full text-left p-5 rounded-xl border-2 border-gray-200 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group disabled:opacity-50 disabled:cursor-wait"
+            onClick={() => onChoose(c)}
+            className="w-full text-left p-4 rounded-xl border border-border bg-surface hover:border-primary/40 hover:bg-primary/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <div className="flex items-start gap-4">
-              <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 group-hover:bg-primary/10 flex items-center justify-center text-sm font-bold text-gray-500 group-hover:text-primary transition-colors">
-                {choice.id.toUpperCase()}
+            <div className="flex items-start gap-3">
+              <span className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold text-sm flex items-center justify-center">
+                {c.id.toUpperCase()}
               </span>
-              <div className="flex-1">
-                <p className="text-gray-800 font-medium leading-relaxed">
-                  {choice.text}
-                </p>
-                <span className="inline-block mt-2 text-xs font-semibold text-gray-400 bg-gray-50 px-2 py-0.5 rounded">
-                  {choice.approach}
-                </span>
+              <div>
+                <p className="text-text text-sm leading-relaxed">{c.text}</p>
+                <p className="text-xs text-muted mt-1 italic">{c.approach}</p>
               </div>
             </div>
           </motion.button>
         ))}
       </div>
+
+      {isLoading && (
+        <div className="flex items-center justify-center gap-2 text-muted text-sm">
+          <Loader2 size={16} className="animate-spin" />
+          Processing your choice...
+        </div>
+      )}
     </motion.div>
   );
 }

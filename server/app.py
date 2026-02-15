@@ -354,15 +354,18 @@ def quiz():
 
 
 # ============================================
-# ENDPOINT 4: Image Generation (Stable Diffusion)
+# ENDPOINT 4: Image Generation (HF Inference API + optional local Claire LoRA)
 # ============================================
+import sys
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 @app.route("/api/generate-image", methods=["POST"])
 def generate_image():
     data = request.json
     prompt = data.get("prompt", "educational infographic")
-    section_type = data.get("sectionType", "infographic")
 
-    # Build a better prompt for educational visuals
     style_suffix = "clean modern design, professional, university educational material, high quality, detailed, flat design illustration"
     full_prompt = f"{prompt}, {style_suffix}"
 
@@ -372,31 +375,28 @@ def generate_image():
 
     try:
         print(f"🎨 Generating image: {full_prompt[:80]}...")
+        import hashlib
         resp = requests.post(
             "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
             headers={"Authorization": f"Bearer {HF_TOKEN}"},
             json={"inputs": full_prompt},
-            timeout=90,
+            timeout=60,
         )
 
         if resp.status_code == 503:
-            # Model is loading, tell frontend to retry
             return jsonify({"imageUrl": None, "loading": True, "error": "Model is warming up, try again in 30s"}), 200
 
         if resp.status_code != 200:
             print(f"❌ HF error {resp.status_code}: {resp.text[:200]}")
             return jsonify({"imageUrl": None, "error": f"HF API error {resp.status_code}"}), 200
 
-        # Save the image to public/generated/
-        import base64
-        import hashlib
-        os.makedirs("public/generated", exist_ok=True)
+        gen_dir = os.path.join(PROJECT_ROOT, "public", "generated")
+        os.makedirs(gen_dir, exist_ok=True)
         filename = hashlib.md5(full_prompt.encode()).hexdigest()[:12] + ".png"
-        filepath = os.path.join("public", "generated", filename)
+        filepath = os.path.join(gen_dir, filename)
         with open(filepath, "wb") as f:
             f.write(resp.content)
 
-        # Return a URL the frontend can use
         image_url = f"http://localhost:5001/images/{filename}"
         print(f"✅ Image saved: {filepath}")
         return jsonify({"imageUrl": image_url})
@@ -406,162 +406,121 @@ def generate_image():
         return jsonify({"imageUrl": None, "error": str(e)}), 200
 
 
+# Serve generated images
+@app.route("/images/<filename>", methods=["GET"])
+def serve_image(filename):
+    from flask import send_from_directory
+    gen_dir = os.path.join(PROJECT_ROOT, "public", "generated")
+    return send_from_directory(gen_dir, filename)
+
+
 # ============================================
 # ENDPOINT 5: VUCA Scenario Simulator
 # ============================================
+def _fallback_scenario(round_num):
+    scenarios = [
+        {
+            "scenario": "Your professor just announced a zero-tolerance policy on AI-generated content. Your partner on a major project admits they used ChatGPT for their entire section. The deadline is tomorrow.",
+            "vuca_factors": ["uncertainty", "complexity"],
+            "choices": [
+                {"id": "a", "text": "Confront your partner and insist they rewrite everything", "approach": "Ethical Leader"},
+                {"id": "b", "text": "Report it to the professor before submission", "approach": "Rule Follower"},
+                {"id": "c", "text": "Help them rewrite the AI parts in their own words tonight", "approach": "Pragmatic Collaborator"},
+            ],
+            "round": 1, "total_rounds": 3,
+        },
+        {
+            "scenario": "Word has spread about the incident. Students are divided on AI policies. A petition is circulating, and your professor asks YOU in front of the class: 'What should our AI policy be?'",
+            "vuca_factors": ["volatility", "ambiguity"],
+            "choices": [
+                {"id": "a", "text": "Argue for clear guidelines allowing AI as a tool with mandatory disclosure", "approach": "Systems Thinker"},
+                {"id": "b", "text": "Support the ban — students need to build skills without AI crutches", "approach": "Traditionalist"},
+                {"id": "c", "text": "Suggest the class votes and decides democratically", "approach": "Democratic Leader"},
+            ],
+            "round": 2, "total_rounds": 3,
+        },
+        {
+            "scenario": "The university is now drafting a campus-wide AI policy and wants student reps. You've been nominated. A tech company offers free AI tools — but only if the university drops ALL restrictions.",
+            "vuca_factors": ["volatility", "uncertainty", "complexity", "ambiguity"],
+            "choices": [
+                {"id": "a", "text": "Accept the tools but require mandatory AI literacy training first", "approach": "Strategic Thinker"},
+                {"id": "b", "text": "Reject the corporate offer to keep education independent", "approach": "Ethical Guardian"},
+                {"id": "c", "text": "Propose a one-semester pilot with strict monitoring", "approach": "Adaptive Innovator"},
+            ],
+            "round": 3, "total_rounds": 3,
+        },
+    ]
+    return scenarios[min(round_num - 1, 2)]
+
+
 @app.route("/api/scenario", methods=["POST"])
-def scenario():
+def generate_scenario():
     data = request.json
     profile = data.get("profile", {})
-    scenario_round = data.get("round", 1)         # 1, 2, or 3
-    previous_choice = data.get("previousChoice", None)
+    round_num = data.get("round", 1)
+    previous_choice = data.get("previousChoice")
     scenario_context = data.get("scenarioContext", "")
-    module_id = data.get("moduleId", "module2")     # which module triggered it
 
-    field = profile.get("field", "your field")
-    year = profile.get("year", "")
-    career = profile.get("career", "your career")
-    fear = profile.get("primaryFear", "unknown")
+    context_block = ""
+    if previous_choice and scenario_context:
+        context_block = f"\nPrevious context: {scenario_context}\nThe student chose: \"{previous_choice}\"\nNow create the NEXT scenario that follows from that choice."
 
-    system = (
-        "You are an AI education scenario designer specializing in VUCA (Volatility, Uncertainty, Complexity, Ambiguity) simulations. "
-        f"The student is a {year} year {field} student who wants to become a {career}. "
-        f"Their biggest concern about AI is: {fear}. "
-        "Create realistic, thought-provoking scenarios that university students actually face regarding AI. "
-        "You MUST return ONLY a valid JSON object with this EXACT structure, nothing else: "
-        '{"scenario": "A 2-3 sentence description of the situation the student faces",'
-        ' "vuca_factors": ["volatility"|"uncertainty"|"complexity"|"ambiguity"],'
-        ' "choices": [{"id": "a", "text": "Choice text", "approach": "1-2 word label like Risk-Taker or Critical Thinker"}, '
-        '{"id": "b", "text": "Choice text", "approach": "label"}, '
-        '{"id": "c", "text": "Choice text", "approach": "label"}],'
-        ' "round": <round_number>, "total_rounds": 3}'
-    )
+    prompt = f"""You are a VUCA scenario generator for university students learning about AI.
+Create a realistic, branching scenario for Round {round_num} of 3.
+Student profile: {profile.get('program', 'university student')}, AI comfort: {profile.get('aiComfort', 'moderate')}.
+{context_block}
 
-    if scenario_round == 1:
-        user_msg = (
-            f"Generate Round 1 of a VUCA scenario simulation. "
-            f"Create a realistic dilemma that a {field} student faces related to AI in their academic or early career life. "
-            f"Make it personal and relatable — something that could happen THIS semester. "
-            f"Examples: AI plagiarism dilemma, AI screening in internship applications, deepfake news on campus, AI replacing skills they are learning. "
-            f"Tailor it to their field of {field} and career goal of {career}."
-        )
-    else:
-        user_msg = (
-            f"Generate Round {scenario_round} of a VUCA scenario simulation. "
-            f"Previous context: {scenario_context} "
-            f"The student chose: {previous_choice}. "
-            f"Now generate the CONSEQUENCES of that choice and present a NEW, escalated dilemma. "
-            f"The stakes should be higher than the previous round. Make it feel like a branching story. "
-            f"This is round {scenario_round} of 3."
-        )
+Return ONLY valid JSON:
+{{"scenario": "2-3 sentence scenario description", "vuca_factors": ["volatility"|"uncertainty"|"complexity"|"ambiguity"], "choices": [{{"id": "a", "text": "choice text", "approach": "approach label"}}, {{"id": "b", "text": "choice text", "approach": "approach label"}}, {{"id": "c", "text": "choice text", "approach": "approach label"}}], "round": {round_num}, "total_rounds": 3}}"""
 
     try:
-        result = call_ai(user_msg, system, max_tokens=800)
+        result = call_ai(prompt, max_tokens=600)
         parsed = extract_json(result)
-        if parsed:
-            parsed["round"] = scenario_round
+        if parsed and "scenario" in parsed and "choices" in parsed:
+            parsed["round"] = round_num
             parsed["total_rounds"] = 3
             return jsonify(parsed)
-        else:
-            print(f"⚠️  Could not parse scenario JSON: {result[:200]}")
-            return jsonify(_fallback_scenario(scenario_round, field, career))
     except Exception as e:
-        print(f"Error generating scenario: {e}")
-        return jsonify(_fallback_scenario(scenario_round, field, career))
+        print(f"Scenario generation error: {e}")
+
+    return jsonify(_fallback_scenario(round_num))
 
 
 @app.route("/api/scenario-debrief", methods=["POST"])
 def scenario_debrief():
     data = request.json
     profile = data.get("profile", {})
-    choices_made = data.get("choicesMade", [])  # list of {round, choice_text, approach}
+    choices_made = data.get("choicesMade", [])
 
-    field = profile.get("field", "your field")
-    career = profile.get("career", "your career")
-
-    system = (
-        "You are an AI education debrief coach. Based on the student's choices in a VUCA scenario simulation, "
-        "generate a personalized debrief. "
-        "You MUST return ONLY a valid JSON object with this EXACT structure: "
-        '{"badge": "A 2-3 word title like Critical Thinker or Ethical Navigator or Adaptive Leader",'
-        ' "summary": "2-3 sentences about their decision-making pattern",'
-        ' "strengths": ["strength 1", "strength 2"],'
-        ' "growth_areas": ["area 1", "area 2"],'
-        ' "vuca_readiness_score": <number 1-100>}'
+    choices_desc = "\n".join(
+        [f"Round {c['round']}: chose \"{c['choice_text']}\" ({c['approach']})" for c in choices_made]
     )
 
-    choices_text = "; ".join([f"Round {c.get('round')}: chose '{c.get('choice_text')}' ({c.get('approach')})" for c in choices_made])
-    user_msg = (
-        f"A {field} student pursuing {career} just completed a 3-round VUCA AI scenario simulation. "
-        f"Their choices were: {choices_text}. "
-        f"Generate a personalized debrief based on their decision patterns."
-    )
+    prompt = f"""Analyze this student's VUCA scenario simulation choices.
+Student: {profile.get('program', 'student')}, AI comfort: {profile.get('aiComfort', 'moderate')}.
+
+Choices made:
+{choices_desc}
+
+Return ONLY valid JSON:
+{{"badge": "a creative 2-3 word title for their decision style", "summary": "2-3 sentence personalized analysis", "strengths": ["strength 1", "strength 2"], "growth_areas": ["area 1", "area 2"], "vuca_readiness_score": 0-100}}"""
 
     try:
-        result = call_ai(user_msg, system, max_tokens=600)
+        result = call_ai(prompt, max_tokens=400)
         parsed = extract_json(result)
-        if parsed:
+        if parsed and "badge" in parsed:
             return jsonify(parsed)
-        else:
-            return jsonify({
-                "badge": "Adaptive Learner",
-                "summary": f"You showed real awareness of AI challenges in {field}. Your choices reflect a balanced approach to navigating uncertainty.",
-                "strengths": ["Willingness to adapt", "Ethical awareness"],
-                "growth_areas": ["Consider long-term consequences", "Seek more data before deciding"],
-                "vuca_readiness_score": 72
-            })
     except Exception as e:
-        print(f"Error generating debrief: {e}")
-        return jsonify({
-            "badge": "Adaptive Learner",
-            "summary": "You completed the simulation with thoughtful choices.",
-            "strengths": ["Adaptability", "Critical thinking"],
-            "growth_areas": ["Decision speed", "Risk assessment"],
-            "vuca_readiness_score": 70
-        })
+        print(f"Debrief generation error: {e}")
 
-
-def _fallback_scenario(round_num, field, career):
-    scenarios = [
-        {
-            "scenario": f"Your {field} professor just announced that any assignment containing AI-generated content will receive an automatic zero. Your classmate, who you're paired with for a major project worth 30% of your grade, tells you they've been using ChatGPT for all their research summaries. The deadline is in 48 hours.",
-            "vuca_factors": ["uncertainty", "complexity"],
-            "choices": [
-                {"id": "a", "text": "Confront your classmate and insist they redo their work without AI", "approach": "Ethical Leader"},
-                {"id": "b", "text": "Report the situation to your professor before the deadline", "approach": "Rule Follower"},
-                {"id": "c", "text": "Help your classmate rewrite the AI parts in their own words before submitting", "approach": "Pragmatic Collaborator"}
-            ],
-            "round": 1, "total_rounds": 3
-        },
-        {
-            "scenario": f"After your choice, word has spread. Other students are divided — some think AI tools should be allowed, others agree with the zero-tolerance policy. A petition is circulating to change the policy. Your professor asks YOU specifically what you think, in front of the class.",
-            "vuca_factors": ["volatility", "ambiguity"],
-            "choices": [
-                {"id": "a", "text": "Argue for clear guidelines that allow AI as a tool but require disclosure", "approach": "Systems Thinker"},
-                {"id": "b", "text": "Support the ban — students need to develop skills without AI crutches", "approach": "Traditionalist"},
-                {"id": "c", "text": "Suggest a class vote and let democracy decide the policy", "approach": "Democratic Leader"}
-            ],
-            "round": 2, "total_rounds": 3
-        },
-        {
-            "scenario": f"The university administration has now gotten involved. They're drafting a campus-wide AI policy and want student input. You've been nominated to represent your faculty. A tech company has also reached out offering free AI tools to students — but only if the university drops its restrictions. As a future {career}, you realize this decision will shape how your entire generation learns.",
-            "vuca_factors": ["volatility", "uncertainty", "complexity", "ambiguity"],
-            "choices": [
-                {"id": "a", "text": "Accept the tools but push for mandatory AI literacy training first", "approach": "Strategic Thinker"},
-                {"id": "b", "text": "Reject the corporate offer to keep education independent from tech influence", "approach": "Ethical Guardian"},
-                {"id": "c", "text": "Propose a pilot program — accept for one semester with strict monitoring", "approach": "Adaptive Innovator"}
-            ],
-            "round": 3, "total_rounds": 3
-        }
-    ]
-    return scenarios[min(round_num - 1, 2)]
-
-
-# Serve generated images
-@app.route("/images/<filename>", methods=["GET"])
-def serve_image(filename):
-    from flask import send_from_directory
-    return send_from_directory("public/generated", filename)
+    approaches = [c.get("approach", "") for c in choices_made]
+    return jsonify({
+        "badge": "Adaptive Learner",
+        "summary": "You navigated uncertainty with thoughtful decision-making. Your choices show a blend of caution and initiative.",
+        "strengths": ["Willingness to engage with complex scenarios", "Consistent decision-making approach"],
+        "growth_areas": ["Consider more diverse stakeholder perspectives", "Explore bolder approaches to uncertainty"],
+        "vuca_readiness_score": 72,
+    })
 
 
 # ============================================
@@ -590,4 +549,4 @@ if __name__ == "__main__":
         print(f"   API Key: {'✅ Set' if IBM_API_KEY else '❌ Missing'}")
         print(f"   Project ID: {IBM_PROJECT_ID if IBM_PROJECT_ID else '❌ Missing'}")
     print(f"   HF Token: {'✅ Set' if HF_TOKEN and HF_TOKEN != 'your_hf_token_here' else '❌ Missing (no images)'}")
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=False)

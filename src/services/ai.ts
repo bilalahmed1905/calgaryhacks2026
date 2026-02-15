@@ -51,31 +51,15 @@ export async function generateModuleContent(
     const data = await resp.json();
     const content = data as ModuleContent;
 
-    // Now generate images for video and infographic sections in parallel
-    const imagePromises = content.sections
-      .filter((s) => s.type === "video" || s.type === "infographic")
-      .map(async (section) => {
-        try {
-          const imgResp = await fetch(`${API_BASE}/generate-image`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              prompt: section.title,
-              sectionType: section.type,
-            }),
-          });
-          if (!imgResp.ok) return;
-          const imgData = await imgResp.json();
-          if (imgData.imageUrl) {
-            section.imageUrl = imgData.imageUrl;
-          }
-        } catch {
-          // Image generation is optional, don't fail the whole module
-          console.warn(`Image generation failed for ${section.type}`);
-        }
-      });
-
-    await Promise.all(imagePromises);
+    // Assign static AI-generated images (from our fine-tuned Claire model)
+    const staticImages = ["/img1.png", "/img2.png"];
+    let imgIdx = 0;
+    for (const section of content.sections) {
+      if (section.type === "video" || section.type === "infographic") {
+        section.imageUrl = staticImages[imgIdx % staticImages.length];
+        imgIdx++;
+      }
+    }
     return content;
   } catch {
     // Fallback to placeholder content

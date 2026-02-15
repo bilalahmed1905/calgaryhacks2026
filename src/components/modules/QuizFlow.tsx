@@ -185,6 +185,18 @@ export function QuizFlow() {
             exit={{ opacity: 0, x: -30 }}
             transition={{ duration: 0.25 }}
           >
+            {currentIndex === 0 && (
+              <div className="mb-6 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                <img
+                  src="/img1.png"
+                  alt="AI-generated module visual"
+                  className="w-full h-40 object-cover"
+                />
+                <div className="px-4 py-1.5 bg-gray-50 text-xs text-gray-400 text-center">
+                  AI-generated visual — Claire (Fine-tuned SD 1.5 LoRA)
+                </div>
+              </div>
+            )}
             <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">
               Module {meta.number} — Question {currentIndex + 1}
             </p>

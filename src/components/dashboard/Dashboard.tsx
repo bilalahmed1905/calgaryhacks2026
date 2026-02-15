@@ -129,23 +129,25 @@ export function Dashboard() {
               }
             )}
 
-            {/* VUCA Simulator CTA */}
+            {/* Simulator CTA */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5 }}
-              className="mt-2 p-5 rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer"
               onClick={() => navigate("/simulator")}
+              className="p-5 rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 cursor-pointer hover:border-primary/60 hover:bg-primary/10 transition-all group"
             >
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                <div className="p-3 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
                   <Zap size={24} className="text-primary" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-bold text-gray-900">VUCA Scenario Simulator</h3>
-                  <p className="text-sm text-gray-500 mt-0.5">Face real AI dilemmas and discover your decision-making profile</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-text">VUCA Scenario Simulator</h3>
+                    <span className="text-[10px] font-bold bg-primary text-white px-2 py-0.5 rounded-full">NEW</span>
+                  </div>
+                  <p className="text-sm text-muted mt-1">Face real AI dilemmas and discover your decision-making profile</p>
                 </div>
-                <span className="text-xs font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">NEW</span>
               </div>
             </motion.div>
           </div>

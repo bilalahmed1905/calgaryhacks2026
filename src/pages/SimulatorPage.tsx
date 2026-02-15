@@ -85,7 +85,6 @@ export function SimulatorPage() {
       setSimState("scenario");
     } catch (err) {
       console.error("Failed to fetch scenario:", err);
-      // Use fallback
       setCurrentScenario(getFallbackScenario(round));
       setSimState("scenario");
     }
@@ -137,10 +136,8 @@ export function SimulatorPage() {
     setScenarioContext(newContext);
 
     if (currentRound >= 3) {
-      // Simulation complete — get debrief
       await fetchDebrief(updatedChoices);
     } else {
-      // Next round
       const nextRound = currentRound + 1;
       setCurrentRound(nextRound);
       await fetchScenario(nextRound, choice.text, newContext);
@@ -152,27 +149,17 @@ export function SimulatorPage() {
 
   return (
     <div className="min-h-screen bg-bg">
-      {/* Header */}
       <header className="w-full px-6 py-4 border-b border-border bg-surface/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate("/dashboard")}
-            >
-              <ArrowLeft size={16} className="mr-1" />
-              Dashboard
-            </Button>
-          </div>
-          <h1 className="text-lg font-bold font-heading text-primary">
-            {APP_NAME}
-          </h1>
+          <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
+            <ArrowLeft size={16} className="mr-1" />
+            Dashboard
+          </Button>
+          <h1 className="text-lg font-bold font-heading text-primary">{APP_NAME}</h1>
         </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-6 py-8">
-        {/* Intro screen */}
         {simState === "intro" && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -205,14 +192,9 @@ export function SimulatorPage() {
                 { letter: "C", label: "Complexity", color: "bg-purple-50 text-purple-600 border-purple-200" },
                 { letter: "A", label: "Ambiguity", color: "bg-blue-50 text-blue-600 border-blue-200" },
               ].map(({ letter, label, color }) => (
-                <div
-                  key={letter}
-                  className={`p-3 rounded-xl border text-center ${color}`}
-                >
+                <div key={letter} className={`p-3 rounded-xl border text-center ${color}`}>
                   <span className="text-2xl font-bold block">{letter}</span>
-                  <span className="text-[10px] font-semibold uppercase tracking-wide">
-                    {label}
-                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide">{label}</span>
                 </div>
               ))}
             </div>
@@ -224,7 +206,6 @@ export function SimulatorPage() {
           </motion.div>
         )}
 
-        {/* Loading */}
         {simState === "loading" && (
           <AIGeneratingState
             message={
@@ -237,7 +218,6 @@ export function SimulatorPage() {
           />
         )}
 
-        {/* Active scenario */}
         {simState === "scenario" && currentScenario && (
           <ScenarioCard
             scenario={currentScenario.scenario}
@@ -250,7 +230,6 @@ export function SimulatorPage() {
           />
         )}
 
-        {/* Debrief */}
         {simState === "debrief" && debrief && (
           <DebriefCard
             badge={debrief.badge}
@@ -265,44 +244,37 @@ export function SimulatorPage() {
   );
 }
 
-// Fallback scenarios if backend is down
 function getFallbackScenario(round: number): ScenarioData {
   const scenarios: ScenarioData[] = [
     {
-      scenario:
-        "Your professor just announced a zero-tolerance policy on AI-generated content. Your partner on a major project admits they used ChatGPT for their entire section. The deadline is tomorrow.",
+      scenario: "Your professor just announced a zero-tolerance policy on AI-generated content. Your partner on a major project admits they used ChatGPT for their entire section. The deadline is tomorrow.",
       vuca_factors: ["uncertainty", "complexity"],
       choices: [
         { id: "a", text: "Confront your partner and insist they rewrite everything", approach: "Ethical Leader" },
         { id: "b", text: "Report it to the professor before submission", approach: "Rule Follower" },
         { id: "c", text: "Help them rewrite the AI parts in their own words tonight", approach: "Pragmatic Collaborator" },
       ],
-      round: 1,
-      total_rounds: 3,
+      round: 1, total_rounds: 3,
     },
     {
-      scenario:
-        "Word has spread about the incident. Students are divided on AI policies. A petition is circulating, and your professor asks YOU in front of the class: 'What should our AI policy be?'",
+      scenario: "Word has spread about the incident. Students are divided on AI policies. A petition is circulating, and your professor asks YOU in front of the class: 'What should our AI policy be?'",
       vuca_factors: ["volatility", "ambiguity"],
       choices: [
         { id: "a", text: "Argue for clear guidelines allowing AI as a tool with mandatory disclosure", approach: "Systems Thinker" },
         { id: "b", text: "Support the ban — students need to build skills without AI crutches", approach: "Traditionalist" },
         { id: "c", text: "Suggest the class votes and decides democratically", approach: "Democratic Leader" },
       ],
-      round: 2,
-      total_rounds: 3,
+      round: 2, total_rounds: 3,
     },
     {
-      scenario:
-        "The university is now drafting a campus-wide AI policy and wants student reps. You've been nominated. A tech company offers free AI tools — but only if the university drops ALL restrictions.",
+      scenario: "The university is now drafting a campus-wide AI policy and wants student reps. You've been nominated. A tech company offers free AI tools — but only if the university drops ALL restrictions.",
       vuca_factors: ["volatility", "uncertainty", "complexity", "ambiguity"],
       choices: [
         { id: "a", text: "Accept the tools but require mandatory AI literacy training first", approach: "Strategic Thinker" },
         { id: "b", text: "Reject the corporate offer to keep education independent", approach: "Ethical Guardian" },
         { id: "c", text: "Propose a one-semester pilot with strict monitoring", approach: "Adaptive Innovator" },
       ],
-      round: 3,
-      total_rounds: 3,
+      round: 3, total_rounds: 3,
     },
   ];
   return scenarios[Math.min(round - 1, 2)];
