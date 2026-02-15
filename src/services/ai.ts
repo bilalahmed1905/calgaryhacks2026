@@ -1,8 +1,6 @@
 // ============================================
-// AI Service — STUBS ONLY
-// This is where your own model integration goes.
-// All functions return placeholder data for now.
-// Replace the implementations with your model calls.
+// AI Service — Calls Python backend → watsonx.ai
+// Falls back to placeholder content if backend is down.
 // ============================================
 
 import type {
@@ -11,50 +9,105 @@ import type {
   QuizQuestion,
 } from "../types";
 
+const API_BASE = "http://localhost:5001/api";
+
 /**
  * Generate a personalized welcome message for the dashboard.
- * TODO: Replace with your own AI model call.
  */
 export async function generateWelcomeMessage(
   userName: string,
   profile: UserProfile
 ): Promise<string> {
-  // STUB — replace with your model
-  await _simulateDelay();
-  return `Hi ${userName}, based on your responses, you're a ${profile.label}. Here's your personalized path to clarity — we've crafted each module specifically for a ${profile.year} year ${profile.field} student like you.`;
+  try {
+    const resp = await fetch(`${API_BASE}/welcome`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userName, profile }),
+    });
+    if (!resp.ok) throw new Error("Backend error");
+    const data = await resp.json();
+    return data.message;
+  } catch {
+    // Fallback if backend is not running
+    console.warn("AI backend not available, using fallback welcome message");
+    return `Hi ${userName}, based on your responses, you're a ${profile.label}. Here's your personalized path to clarity — we've crafted each module specifically for a ${profile.year} year ${profile.field} student like you.`;
+  }
 }
 
 /**
  * Generate all content for a specific module.
- * TODO: Replace with your own AI model call.
  */
 export async function generateModuleContent(
   moduleId: string,
   profile: UserProfile
 ): Promise<ModuleContent> {
-  // STUB — replace with your model
-  await _simulateDelay();
-  return _getPlaceholderContent(moduleId, profile);
+  try {
+    const resp = await fetch(`${API_BASE}/module-content`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moduleId, profile }),
+    });
+    if (!resp.ok) throw new Error("Backend error");
+    const data = await resp.json();
+    const content = data as ModuleContent;
+
+    // Now generate images for video and infographic sections in parallel
+    const imagePromises = content.sections
+      .filter((s) => s.type === "video" || s.type === "infographic")
+      .map(async (section) => {
+        try {
+          const imgResp = await fetch(`${API_BASE}/generate-image`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: section.title,
+              sectionType: section.type,
+            }),
+          });
+          if (!imgResp.ok) return;
+          const imgData = await imgResp.json();
+          if (imgData.imageUrl) {
+            section.imageUrl = imgData.imageUrl;
+          }
+        } catch {
+          // Image generation is optional, don't fail the whole module
+          console.warn(`Image generation failed for ${section.type}`);
+        }
+      });
+
+    await Promise.all(imagePromises);
+    return content;
+  } catch {
+    // Fallback to placeholder content
+    console.warn("AI backend not available, using placeholder content");
+    return _getPlaceholderContent(moduleId, profile);
+  }
 }
 
 /**
  * Generate quiz questions for a specific module.
- * TODO: Replace with your own AI model call.
  */
 export async function generateQuizQuestions(
   moduleId: string,
   profile: UserProfile
 ): Promise<QuizQuestion[]> {
-  // STUB — replace with your model
-  await _simulateDelay();
-  return _getPlaceholderQuiz(moduleId, profile);
+  try {
+    const resp = await fetch(`${API_BASE}/quiz`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moduleId, profile }),
+    });
+    if (!resp.ok) throw new Error("Backend error");
+    const data = await resp.json();
+    return data as QuizQuestion[];
+  } catch {
+    // Fallback to placeholder quiz
+    console.warn("AI backend not available, using placeholder quiz");
+    return _getPlaceholderQuiz(moduleId, profile);
+  }
 }
 
-// ---- Internal helpers ----
-
-function _simulateDelay(ms = 1500): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// ---- Fallback placeholder helpers (used when backend is offline) ----
 
 function _getPlaceholderContent(
   moduleId: string,

@@ -68,6 +68,25 @@ export function ContentSection({ section, index }: ContentSectionProps) {
           {section.title}
         </h3>
 
+        {/* AI-generated image */}
+        {section.imageUrl && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.3 }}
+            className="mb-6 rounded-xl overflow-hidden border border-border shadow-sm"
+          >
+            <img
+              src={section.imageUrl}
+              alt={section.title}
+              className="w-full h-auto object-cover"
+            />
+            <div className="px-4 py-2 bg-gray-50 text-xs text-text-muted text-center">
+              AI-generated visual — Stable Diffusion
+            </div>
+          </motion.div>
+        )}
+
         {/* Markdown content */}
         <div className="prose prose-sm max-w-none text-text leading-relaxed">
           <ReactMarkdown>{section.content}</ReactMarkdown>

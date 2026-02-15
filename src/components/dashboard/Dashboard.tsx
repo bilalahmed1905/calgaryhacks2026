@@ -27,21 +27,24 @@ export function Dashboard() {
       return;
     }
 
+    let cancelled = false;
     const loadWelcome = async () => {
       try {
         const msg = await generateWelcomeMessage(user.name, profile);
-        setWelcomeMsg(msg);
+        if (!cancelled) setWelcomeMsg(msg);
       } catch {
-        setWelcomeMsg(
-          `Welcome to ${APP_NAME}, ${user.name}! Your personalized learning path is ready.`
-        );
+        if (!cancelled)
+          setWelcomeMsg(
+            `Welcome to ${APP_NAME}, ${user.name}! Your personalized learning path is ready.`
+          );
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     loadWelcome();
-  }, [user, profile, navigate]);
+    return () => { cancelled = true; };
+  }, []);
 
   const handleReset = () => {
     if (
