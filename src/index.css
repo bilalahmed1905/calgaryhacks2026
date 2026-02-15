@@ -1,1 +1,53 @@
 @import "tailwindcss";
+
+/* University of Calgary inspired color scheme */
+/* Primary: UofC Red, Accent: UofC Gold/Yellow */
+
+@theme {
+  --color-primary: #cf0722;
+  --color-primary-dark: #a3051a;
+  --color-primary-light: #e8334a;
+  --color-accent: #ffb500;
+  --color-accent-dark: #d49700;
+  --color-accent-light: #ffc733;
+  --color-bg: #fafafa;
+  --color-bg-dark: #111111;
+  --color-surface: #ffffff;
+  --color-surface-dark: #1a1a1a;
+  --color-text: #1a1a1a;
+  --color-text-muted: #6b7280;
+  --color-text-light: #9ca3af;
+  --color-border: #e5e7eb;
+  --color-success: #10b981;
+  --color-error: #ef4444;
+
+  --font-heading: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    line-height: 1.2;
+  }
+}
