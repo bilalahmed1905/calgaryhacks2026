@@ -4,13 +4,15 @@ import os
 # --- Hugging Face API ---
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
-# --- Model IDs (used via HF Inference API, not loaded locally) ---
+# --- Model IDs ---
 IMAGE_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
 VIDEO_MODEL_ID = "ali-vilab/text-to-video-ms-1.7b"
 
-# --- HF Inference API URLs ---
-IMAGE_API_URL = f"https://api-inference.huggingface.co/models/{IMAGE_MODEL_ID}"
+# --- HF Inference API URLs (used for video only) ---
 VIDEO_API_URL = f"https://api-inference.huggingface.co/models/{VIDEO_MODEL_ID}"
+
+# --- LoRA weights path (download from Colab step 8) ---
+LORA_WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "outputs", "lora_weights", "claritypath_lora")
 
 # --- Output Directories ---
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "outputs")
