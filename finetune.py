@@ -73,14 +73,12 @@ def finetune_lora(
         te2_out = pipe.text_encoder_2(
             tokenizer_2_output.input_ids.to(device), output_hidden_states=True,
         )
-        # Keep embeddings in float32 for stable training
         encoder_hidden_states = torch.cat([
             te1_out.hidden_states[-2],
             te2_out.hidden_states[-2],
         ], dim=-1).float().detach()
         pooled_output = te2_out[0].float().detach()
 
-    # Delete text encoders completely to free GPU memory
     del te1_out, te2_out, tokenizer_output, tokenizer_2_output
     del pipe.text_encoder, pipe.text_encoder_2
     gc.collect()
@@ -88,9 +86,11 @@ def finetune_lora(
     print("Text encoders freed.")
 
     # ------------------------------------------------------------------
-    # 3. Pre-encode ALL images through VAE, then delete VAE entirely
+    # 3. Pre-encode ALL images through VAE in FLOAT32, then delete VAE
+    #    SDXL VAE is known to produce NaN in float16. The official
+    #    diffusers scripts explicitly keep VAE in float32.
     # ------------------------------------------------------------------
-    print("Pre-encoding images through VAE...")
+    print("Pre-encoding images through VAE (float32)...")
     valid_ext = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
     transform = transforms.Compose([
         transforms.ToTensor(),
@@ -98,21 +98,24 @@ def finetune_lora(
     ])
 
     all_latents = []
-    pipe.vae.to(device)
+    pipe.vae.to(device, dtype=torch.float32)
     pipe.vae.requires_grad_(False)
 
     for f in sorted(os.listdir(image_folder)):
         if os.path.splitext(f)[1].lower() in valid_ext:
             img = Image.open(os.path.join(image_folder, f)).convert("RGB").resize((512, 512))
-            pixel = transform(img).unsqueeze(0).to(device, dtype=torch.float16)
+            pixel = transform(img).unsqueeze(0).to(device, dtype=torch.float32)
             with torch.no_grad():
                 latent = pipe.vae.encode(pixel).latent_dist.sample()
-                latent = (latent * pipe.vae.config.scaling_factor).float().cpu()
+                latent = (latent * pipe.vae.config.scaling_factor).cpu()
+            if torch.isnan(latent).any():
+                print(f"  WARNING: NaN in latent for {f}, skipping")
+                continue
             all_latents.append(latent)
+            print(f"  Encoded {f} (latent range: {latent.min():.3f} to {latent.max():.3f})")
 
     print(f"Encoded {len(all_latents)} images to latents.")
 
-    # Delete VAE completely
     del pipe.vae
     gc.collect()
     torch.cuda.empty_cache()
@@ -134,8 +137,7 @@ def finetune_lora(
     unet.to(device)
     unet.enable_gradient_checkpointing()
 
-    # Cast only LoRA (trainable) params to float32 for stable training
-    for name, param in unet.named_parameters():
+    for param in unet.parameters():
         if param.requires_grad:
             param.data = param.data.float()
     unet.train()
@@ -148,19 +150,19 @@ def finetune_lora(
         filter(lambda p: p.requires_grad, unet.parameters()), lr=learning_rate,
     )
     noise_scheduler = DDPMScheduler.from_pretrained(IMAGE_MODEL_ID, subfolder="scheduler")
+    scaler = torch.cuda.amp.GradScaler()
 
     add_time_ids = torch.tensor([[512, 512, 0, 0, 512, 512]], dtype=torch.float32, device=device)
-
-    # Move embeddings to GPU once (float32)
     encoder_hidden_states = encoder_hidden_states.to(device)
     pooled_output = pooled_output.to(device)
 
     # ------------------------------------------------------------------
     # 5. Training loop
-    #    autocast handles float16 base + float32 LoRA mixed dtypes
-    #    Loss computed in float32 outside autocast for stability
+    #    autocast handles mixed float16/float32 dtypes in forward pass
+    #    GradScaler prevents gradient underflow in float16
+    #    Loss computed in float32 for stability
     # ------------------------------------------------------------------
-    print(f"Training on {len(all_latents)} images for {num_epochs} epochs...")
+    print(f"\nTraining on {len(all_latents)} images for {num_epochs} epochs...")
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         for latent in all_latents:
@@ -185,13 +187,14 @@ def finetune_lora(
                     added_cond_kwargs=added_cond_kwargs,
                 ).sample
 
-            # Loss in float32 (outside autocast)
             loss = torch.nn.functional.mse_loss(pred.float(), noise.float())
 
             optimizer.zero_grad()
-            loss.backward()
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(unet.parameters(), 1.0)
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
             epoch_loss += loss.item()
 
         avg_loss = epoch_loss / len(all_latents)
