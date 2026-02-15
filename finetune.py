@@ -17,7 +17,7 @@ import sys
 def finetune_lora(
     image_folder,
     prompt,
-    output_name="ascend_ignite_lora",
+    output_name="claritypath_lora",
     num_epochs=5,
     learning_rate=1e-4,
     lora_rank=4,
