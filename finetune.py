@@ -43,7 +43,11 @@ def finetune_lora(
     print(f"Using device: {device}")
     print("Loading pipeline in float16...")
     pipe = StableDiffusionXLPipeline.from_pretrained(
-        IMAGE_MODEL_ID, torch_dtype=torch.float16, token=HF_TOKEN or None,
+        IMAGE_MODEL_ID,
+        torch_dtype=torch.float16,
+        variant="fp16",
+        low_cpu_mem_usage=True,
+        token=HF_TOKEN or None,
     )
 
     # ------------------------------------------------------------------
