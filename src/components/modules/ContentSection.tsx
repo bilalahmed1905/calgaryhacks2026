@@ -68,6 +68,18 @@ export function ContentSection({ section, index }: ContentSectionProps) {
           {section.title}
         </h3>
 
+        {/* AI-generated image */}
+        {section.imageUrl && (
+          <div className="mb-4 rounded-xl overflow-hidden border border-border">
+            <img
+              src={section.imageUrl}
+              alt={section.title}
+              className="w-full h-auto object-cover"
+              loading="lazy"
+            />
+          </div>
+        )}
+
         {/* Markdown content */}
         <div className="prose prose-sm max-w-none text-text leading-relaxed">
           <ReactMarkdown>{section.content}</ReactMarkdown>

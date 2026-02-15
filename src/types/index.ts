@@ -69,6 +69,7 @@ export interface ModuleContentSection {
   title: string;
   content: string; // Markdown or structured text
   items?: string[]; // For lists (takeaways, infographic items)
+  imageUrl?: string;
 }
 
 export interface ModuleContent {

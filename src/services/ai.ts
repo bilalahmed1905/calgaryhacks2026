@@ -1,8 +1,7 @@
 // ============================================
-// AI Service — STUBS ONLY
-// This is where your own model integration goes.
-// All functions return placeholder data for now.
-// Replace the implementations with your model calls.
+// AI Service — Flask Backend Integration
+// All functions call the Flask API at localhost:5001.
+// Placeholder data is kept as fallbacks for error cases.
 // ============================================
 
 import type {
@@ -11,50 +10,101 @@ import type {
   QuizQuestion,
 } from "../types";
 
+const API_BASE = "http://localhost:5001";
+
 /**
  * Generate a personalized welcome message for the dashboard.
- * TODO: Replace with your own AI model call.
+ * Calls POST /api/welcome; falls back to hardcoded string on error.
  */
 export async function generateWelcomeMessage(
   userName: string,
   profile: UserProfile
 ): Promise<string> {
-  // STUB — replace with your model
-  await _simulateDelay();
-  return `Hi ${userName}, based on your responses, you're a ${profile.label}. Here's your personalized path to clarity — we've crafted each module specifically for a ${profile.year} year ${profile.field} student like you.`;
+  try {
+    const res = await fetch(`${API_BASE}/api/welcome`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userName, profile }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.message;
+  } catch (err) {
+    console.error("generateWelcomeMessage: API call failed, using fallback", err);
+    return `Hi ${userName}, based on your responses, you're a ${profile.label}. Here's your personalized path to clarity — we've crafted each module specifically for a ${profile.year} year ${profile.field} student like you.`;
+  }
 }
 
 /**
  * Generate all content for a specific module.
- * TODO: Replace with your own AI model call.
+ * Calls POST /api/module-content; falls back to placeholder content on error.
  */
 export async function generateModuleContent(
   moduleId: string,
   profile: UserProfile
 ): Promise<ModuleContent> {
-  // STUB — replace with your model
-  await _simulateDelay();
-  return _getPlaceholderContent(moduleId, profile);
+  try {
+    const res = await fetch(`${API_BASE}/api/module-content`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moduleId, profile }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data: ModuleContent = await res.json();
+    return data;
+  } catch (err) {
+    console.error("generateModuleContent: API call failed, using fallback", err);
+    return _getPlaceholderContent(moduleId, profile);
+  }
 }
 
 /**
  * Generate quiz questions for a specific module.
- * TODO: Replace with your own AI model call.
+ * Calls POST /api/quiz; falls back to placeholder quiz data on error.
  */
 export async function generateQuizQuestions(
   moduleId: string,
   profile: UserProfile
 ): Promise<QuizQuestion[]> {
-  // STUB — replace with your model
-  await _simulateDelay();
-  return _getPlaceholderQuiz(moduleId, profile);
+  try {
+    const res = await fetch(`${API_BASE}/api/quiz`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moduleId, profile }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data: QuizQuestion[] = await res.json();
+    return data;
+  } catch (err) {
+    console.error("generateQuizQuestions: API call failed, using fallback", err);
+    return _getPlaceholderQuiz(moduleId, profile);
+  }
 }
 
-// ---- Internal helpers ----
-
-function _simulateDelay(ms = 1500): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Generate an image from a text prompt.
+ * Calls POST /api/generate-image; returns the image URL or null.
+ */
+export async function generateImage(
+  prompt: string,
+  sectionType?: string
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/generate-image`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, sectionType }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.imageUrl ?? null;
+  } catch (err) {
+    console.error("generateImage: API call failed", err);
+    return null;
+  }
 }
+
+// ---- Internal fallback helpers ----
 
 function _getPlaceholderContent(
   moduleId: string,
