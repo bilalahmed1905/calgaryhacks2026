@@ -16,6 +16,22 @@ export function QuestionCard({
 }: QuestionCardProps) {
   const [showTooltip, setShowTooltip] = useState(false);
 
+  // 🔥 Map question IDs to the actual keys stored in answers
+  const getFieldKey = (id: string) => {
+    switch (id) {
+      case "q2":
+        return "q2_ai_usage";
+      case "q3":
+        return "q3_biggest_fear";
+      case "q4":
+        return "q4_learning_style";
+      case "q5":
+        return "q5_mindset";
+      default:
+        return id;
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 50 }}
@@ -30,7 +46,9 @@ export function QuestionCard({
           <h2 className="text-2xl md:text-3xl font-bold font-heading text-text">
             {question.title}
           </h2>
+
           <button
+            type="button"
             className="mt-1 text-text-light hover:text-primary transition-colors cursor-pointer"
             onClick={() => setShowTooltip(!showTooltip)}
             aria-label="Why we ask this"
@@ -38,7 +56,9 @@ export function QuestionCard({
             <HelpCircle size={20} />
           </button>
         </div>
+
         <p className="text-text-muted text-lg">{question.subtitle}</p>
+
         {showTooltip && (
           <motion.div
             initial={{ opacity: 0, y: -5 }}
@@ -58,6 +78,7 @@ export function QuestionCard({
               <label className="block text-sm font-semibold text-text mb-2">
                 {part.label}
               </label>
+
               {part.type === "dropdown" && part.options && (
                 <select
                   value={answers[part.id] ?? ""}
@@ -72,6 +93,7 @@ export function QuestionCard({
                   ))}
                 </select>
               )}
+
               {part.type === "text" && (
                 <input
                   type="text"
@@ -90,40 +112,42 @@ export function QuestionCard({
       {question.type === "radio" && question.options && (
         <div className="space-y-3">
           {question.options.map((opt) => {
-            const isSelected = answers[question.id] === opt.value;
-            const fieldKey =
-              question.id === "q2"
-                ? "q2_ai_usage"
-                : question.id === "q3"
-                ? "q3_biggest_fear"
-                : question.id === "q4"
-                ? "q4_learning_style"
-                : "q5_mindset";
+            const fieldKey = getFieldKey(question.id);
+
+            // 🔥 FIXED: use correct key
+            const isSelected = answers[fieldKey] === opt.value;
 
             return (
               <div key={opt.value}>
                 <motion.button
+                  
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
                   onClick={() => onAnswer(fieldKey, opt.value)}
                   className={`w-full text-left p-4 rounded-xl border-2 transition-all cursor-pointer ${
                     isSelected
-                      ? "border-primary bg-primary/5 shadow-md"
-                      : "border-border hover:border-primary/30 hover:bg-gray-50"
+                      ? "border-red-600 bg-red-50 shadow-md"
+                      : "border-border hover:border-red-300 hover:bg-gray-50"
                   }`}
                 >
                   <div className="flex items-center gap-3">
+                    {/* Circle indicator */}
                     <div
                       className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${
-                        isSelected ? "border-primary" : "border-gray-300"
+                        isSelected
+                          ? "border-red-600 bg-red-600"
+                          : "border-gray-300 bg-white"
                       }`}
                     >
                       {isSelected && (
-                        <div className="w-3 h-3 rounded-full bg-primary" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-white" />
                       )}
                     </div>
+
                     <div>
-                      <span className="font-medium text-text">{opt.label}</span>
+                      <span className="font-medium text-text">
+                        {opt.label}
+                      </span>
                       {opt.description && (
                         <p className="text-sm text-text-muted mt-0.5">
                           {opt.description}
@@ -134,22 +158,26 @@ export function QuestionCard({
                 </motion.button>
 
                 {/* "Other" text input for Q3 */}
-                {opt.value === "E" && isSelected && question.id === "q3" && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    className="mt-2 ml-8"
-                  >
-                    <input
-                      type="text"
-                      value={answers.q3_other_text ?? ""}
-                      onChange={(e) => onAnswer("q3_other_text", e.target.value)}
-                      placeholder="Tell us what worries you..."
-                      className="w-full px-4 py-2 border border-border rounded-lg bg-surface text-text text-sm placeholder:text-text-light focus:outline-none focus:ring-2 focus:ring-primary"
-                      autoFocus
-                    />
-                  </motion.div>
-                )}
+                {opt.value === "E" &&
+                  isSelected &&
+                  question.id === "q3" && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      className="mt-2 ml-8"
+                    >
+                      <input
+                        type="text"
+                        value={answers.q3_other_text ?? ""}
+                        onChange={(e) =>
+                          onAnswer("q3_other_text", e.target.value)
+                        }
+                        placeholder="Tell us what worries you..."
+                        className="w-full px-4 py-2 border border-border rounded-lg bg-surface text-text text-sm placeholder:text-text-light focus:outline-none focus:ring-2 focus:ring-primary"
+                        autoFocus
+                      />
+                    </motion.div>
+                  )}
               </div>
             );
           })}
