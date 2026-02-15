@@ -19,7 +19,7 @@ def finetune_lora(
     prompt,
     output_name="claritypath_lora",
     num_epochs=5,
-    learning_rate=1e-4,
+    learning_rate=1e-5,
     lora_rank=4,
     batch_size=1,
 ):
@@ -130,6 +130,8 @@ def finetune_lora(
     # SDXL added conditioning: original_size, crop, target_size
     add_time_ids = torch.tensor([[1024, 1024, 0, 0, 1024, 1024]], dtype=dtype, device=device)
 
+    scaler = torch.amp.GradScaler("cuda")
+
     print(f"Training on {len(dataset)} images for {num_epochs} epochs...")
     for epoch in range(num_epochs):
         epoch_loss = 0.0
@@ -142,7 +144,8 @@ def finetune_lora(
                 latents = pipe.vae.encode(pixel_values).latent_dist.sample()
                 latents = latents * pipe.vae.config.scaling_factor
 
-            # Add noise
+            # Cast latents and noise to float32 for stable training
+            latents = latents.float()
             noise = torch.randn_like(latents)
             timesteps = torch.randint(
                 0, noise_scheduler.config.num_train_timesteps,
@@ -151,22 +154,26 @@ def finetune_lora(
             noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
             # Expand encoder states for batch
-            enc_hidden = encoder_hidden_states.expand(bs, -1, -1)
-            pooled = pooled_output.expand(bs, -1)
-            time_ids = add_time_ids.expand(bs, -1)
+            enc_hidden = encoder_hidden_states.expand(bs, -1, -1).float()
+            pooled = pooled_output.expand(bs, -1).float()
+            time_ids = add_time_ids.expand(bs, -1).float()
 
-            # Predict noise
+            # Predict noise with mixed precision
             added_cond_kwargs = {"text_embeds": pooled, "time_ids": time_ids}
-            pred = unet(
-                noisy_latents, timesteps,
-                encoder_hidden_states=enc_hidden,
-                added_cond_kwargs=added_cond_kwargs,
-            ).sample
+            with torch.amp.autocast("cuda"):
+                pred = unet(
+                    noisy_latents, timesteps,
+                    encoder_hidden_states=enc_hidden,
+                    added_cond_kwargs=added_cond_kwargs,
+                ).sample
 
             loss = torch.nn.functional.mse_loss(pred.float(), noise.float())
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(unet.parameters(), 1.0)
+            scaler.step(optimizer)
+            scaler.update()
             epoch_loss += loss.item()
         print(f"Epoch {epoch + 1}/{num_epochs} - Loss: {epoch_loss / len(dataloader):.4f}")
 
