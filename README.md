@@ -1,4 +1,5 @@
-# ClarityPath
+# ClarityPath ReadMe
+# Readme
 
 **AI-powered career development platform for university students.**
 
